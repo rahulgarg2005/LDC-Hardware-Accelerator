@@ -1,0 +1,970 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>LDC Edge Detection – Architecture</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Inter:wght@300;400;500;600&display=swap');
+
+  :root {
+    --bg: #0a0c10;
+    --bg2: #111318;
+    --bg3: #181c22;
+    --border: rgba(255,255,255,0.07);
+    --border-hi: rgba(255,255,255,0.15);
+    --text: #e8eaf0;
+    --muted: #7a8299;
+    --accent: #4f8ef7;
+    --accent2: #a78bfa;
+    --green: #34d399;
+    --amber: #fbbf24;
+    --coral: #f87171;
+    --teal: #2dd4bf;
+    --pink: #f472b6;
+
+    --blk1: #1e3a5f;
+    --blk2: #1e3d2f;
+    --blk3: #3d2a1e;
+    --blk4: #2d1e3d;
+    --dense: #1a1e3a;
+    --up: #1e2d1a;
+    --cofuse: #3a1e2a;
+    --skip: rgba(251,191,36,0.08);
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Inter', sans-serif;
+    font-size: 14px;
+    line-height: 1.6;
+    min-height: 100vh;
+  }
+
+  /* ── Header ── */
+  header {
+    padding: 36px 48px 28px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: flex-start;
+    gap: 32px;
+    flex-wrap: wrap;
+  }
+  .header-title h1 {
+    font-size: 22px;
+    font-weight: 600;
+    letter-spacing: -0.3px;
+    color: #fff;
+  }
+  .header-title p {
+    color: var(--muted);
+    font-size: 13px;
+    margin-top: 4px;
+  }
+  .header-stats {
+    display: flex;
+    gap: 20px;
+    flex-wrap: wrap;
+    margin-left: auto;
+    align-items: center;
+  }
+  .stat {
+    text-align: center;
+    padding: 10px 18px;
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+  }
+  .stat .val { font-family: 'JetBrains Mono', monospace; font-size: 15px; font-weight: 600; color: var(--accent); }
+  .stat .lbl { font-size: 11px; color: var(--muted); margin-top: 2px; }
+
+  /* ── Legend ── */
+  .legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 14px;
+    padding: 16px 48px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg2);
+  }
+  .leg-item { display: flex; align-items: center; gap: 7px; font-size: 12px; color: var(--muted); }
+  .leg-dot { width: 11px; height: 11px; border-radius: 3px; flex-shrink: 0; }
+
+  /* ── Main canvas ── */
+  .canvas {
+    padding: 40px 48px;
+    overflow-x: auto;
+  }
+
+  /* ── Flow container ── */
+  .flow {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    min-width: 900px;
+  }
+
+  /* ── Row ── */
+  .row {
+    display: flex;
+    align-items: stretch;
+    gap: 0;
+    position: relative;
+  }
+
+  /* ── Arrow column ── */
+  .arr-col {
+    width: 48px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    flex-shrink: 0;
+  }
+  .arr-v {
+    width: 2px;
+    flex: 1;
+    min-height: 24px;
+    background: linear-gradient(to bottom, var(--accent) 0%, var(--accent2) 100%);
+    opacity: 0.35;
+  }
+  .arr-head {
+    width: 0; height: 0;
+    border-left: 6px solid transparent;
+    border-right: 6px solid transparent;
+    border-top: 9px solid var(--accent2);
+    opacity: 0.6;
+    margin-top: -1px;
+  }
+
+  /* ── Block card ── */
+  .block {
+    flex: 1;
+    border-radius: 14px;
+    border: 1px solid var(--border);
+    overflow: hidden;
+    cursor: pointer;
+    transition: border-color 0.2s, box-shadow 0.2s, transform 0.15s;
+    position: relative;
+  }
+  .block:hover {
+    border-color: var(--border-hi);
+    box-shadow: 0 0 0 1px rgba(79,142,247,0.2), 0 8px 32px rgba(0,0,0,0.4);
+    transform: translateY(-1px);
+  }
+  .block.active {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px rgba(79,142,247,0.25), 0 8px 32px rgba(0,0,0,0.5);
+  }
+
+  .block-header {
+    padding: 14px 18px 12px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .block-icon {
+    width: 32px; height: 32px;
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 15px;
+    flex-shrink: 0;
+  }
+  .block-title { font-size: 13px; font-weight: 600; color: #fff; }
+  .block-sub { font-size: 11px; color: var(--muted); margin-top: 2px; }
+  .block-badge {
+    margin-left: auto;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    padding: 3px 8px;
+    border-radius: 20px;
+    background: rgba(255,255,255,0.06);
+    color: var(--muted);
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  .block-body {
+    padding: 0 18px 14px;
+    display: none;
+  }
+  .block.active .block-body { display: block; }
+
+  .block-body p {
+    font-size: 12px;
+    color: var(--muted);
+    line-height: 1.65;
+    margin-bottom: 10px;
+  }
+
+  /* layers list */
+  .layers { display: flex; flex-direction: column; gap: 5px; margin-bottom: 10px; }
+  .layer {
+    display: flex; align-items: center; gap: 8px;
+    padding: 6px 10px;
+    background: rgba(255,255,255,0.03);
+    border-radius: 7px;
+    border-left: 2px solid transparent;
+    font-size: 11px;
+  }
+  .layer .lname { font-family: 'JetBrains Mono', monospace; font-size: 10px; font-weight: 600; }
+  .layer .ldetail { color: var(--muted); font-size: 10px; margin-left: auto; font-family: 'JetBrains Mono', monospace; }
+
+  /* tensor shape pill */
+  .shapes { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+  .shape-pill {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    padding: 3px 10px;
+    border-radius: 20px;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid var(--border);
+    color: var(--text);
+  }
+  .shape-pill span { color: var(--muted); }
+  .shape-label { font-size: 10px; color: var(--muted); align-self: center; }
+
+  /* ── Skip connection section ── */
+  .skip-section {
+    padding: 18px 48px;
+    background: rgba(251,191,36,0.03);
+    border-top: 1px solid rgba(251,191,36,0.1);
+    border-bottom: 1px solid rgba(251,191,36,0.1);
+    margin: 0 0;
+  }
+  .skip-title {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--amber);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    margin-bottom: 14px;
+  }
+  .skip-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 10px;
+  }
+  .skip-card {
+    padding: 12px 14px;
+    border-radius: 10px;
+    border: 1px solid rgba(251,191,36,0.15);
+    background: rgba(251,191,36,0.04);
+    font-size: 11px;
+  }
+  .skip-card .sc-title {
+    font-weight: 600;
+    color: var(--amber);
+    font-size: 11px;
+    margin-bottom: 5px;
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .skip-card p { color: var(--muted); font-size: 11px; line-height: 1.55; }
+
+  /* ── Upsample row ── */
+  .up-row {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 10px;
+    padding: 24px 48px;
+  }
+  .up-card {
+    border-radius: 12px;
+    border: 1px solid rgba(52,211,153,0.2);
+    background: rgba(52,211,153,0.04);
+    overflow: hidden;
+    cursor: pointer;
+    transition: border-color 0.2s, transform 0.15s;
+  }
+  .up-card:hover { border-color: rgba(52,211,153,0.5); transform: translateY(-2px); }
+  .up-card.active { border-color: var(--green); }
+  .up-header {
+    padding: 10px 14px;
+    background: rgba(52,211,153,0.07);
+    border-bottom: 1px solid rgba(52,211,153,0.1);
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .up-header .uh-title { font-size: 12px; font-weight: 600; color: var(--green); }
+  .up-header .uh-scale {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--muted);
+    background: rgba(255,255,255,0.06);
+    padding: 2px 7px;
+    border-radius: 10px;
+  }
+  .up-body { padding: 10px 14px; display: none; }
+  .up-card.active .up-body { display: block; }
+  .up-body p { font-size: 11px; color: var(--muted); line-height: 1.55; margin-bottom: 8px; }
+
+  /* ── CoFusion ── */
+  .cofusion-wrap {
+    padding: 24px 48px;
+  }
+  .cofusion-card {
+    border-radius: 14px;
+    border: 1px solid rgba(244,114,182,0.3);
+    background: rgba(244,114,182,0.04);
+    overflow: hidden;
+    cursor: pointer;
+    transition: border-color 0.2s;
+  }
+  .cofusion-card:hover { border-color: rgba(244,114,182,0.6); }
+  .cofusion-card.active { border-color: var(--pink); }
+  .cofusion-header {
+    padding: 16px 20px;
+    background: rgba(244,114,182,0.08);
+    border-bottom: 1px solid rgba(244,114,182,0.1);
+    display: flex; align-items: center; gap: 14px;
+  }
+  .cofusion-icon {
+    width: 36px; height: 36px;
+    background: rgba(244,114,182,0.15);
+    border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px;
+  }
+  .cofusion-title { font-size: 14px; font-weight: 600; color: var(--pink); }
+  .cofusion-sub { font-size: 11px; color: var(--muted); margin-top: 2px; }
+  .cofusion-body { padding: 18px 20px; display: none; }
+  .cofusion-card.active .cofusion-body { display: block; }
+
+  .cf-steps {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 10px;
+    margin-bottom: 14px;
+  }
+  .cf-step {
+    padding: 10px 12px;
+    background: rgba(255,255,255,0.03);
+    border-radius: 9px;
+    border-left: 2px solid var(--pink);
+    font-size: 11px;
+  }
+  .cf-step .csn { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--pink); font-weight: 600; margin-bottom: 4px; }
+  .cf-step p { color: var(--muted); line-height: 1.55; }
+
+  /* ── Output ── */
+  .output-wrap {
+    padding: 0 48px 40px;
+  }
+  .output-row {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 10px;
+    margin-top: 20px;
+  }
+  .out-card {
+    border-radius: 12px;
+    padding: 14px;
+    text-align: center;
+    border: 1px solid var(--border);
+    background: var(--bg3);
+  }
+  .out-card .oc-icon { font-size: 22px; margin-bottom: 8px; }
+  .out-card .oc-title { font-size: 11px; font-weight: 600; color: var(--text); margin-bottom: 4px; }
+  .out-card .oc-shape {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--accent);
+    background: rgba(79,142,247,0.08);
+    padding: 2px 8px;
+    border-radius: 10px;
+    display: inline-block;
+    margin-bottom: 6px;
+  }
+  .out-card .oc-desc { font-size: 10px; color: var(--muted); line-height: 1.5; }
+  .out-card.fused { border-color: rgba(244,114,182,0.4); background: rgba(244,114,182,0.05); }
+  .out-card.fused .oc-shape { background: rgba(244,114,182,0.1); color: var(--pink); }
+
+  /* ── Section divider ── */
+  .sec-label {
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted);
+    padding: 0 48px;
+    margin: 28px 0 10px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .sec-label::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+  }
+
+  /* ── Block color themes ── */
+  .b-input .block-header  { background: rgba(79,142,247,0.08); }
+  .b-input .block-icon    { background: rgba(79,142,247,0.15); }
+  .b-input                { border-color: rgba(79,142,247,0.2); }
+
+  .b-block1 .block-header { background: rgba(31,58,95,0.5); }
+  .b-block1 .block-icon   { background: rgba(79,142,247,0.15); }
+  .b-block1               { border-color: rgba(79,142,247,0.18); }
+
+  .b-block2 .block-header { background: rgba(31,61,47,0.5); }
+  .b-block2 .block-icon   { background: rgba(52,211,153,0.15); }
+  .b-block2               { border-color: rgba(52,211,153,0.18); }
+
+  .b-block3 .block-header { background: rgba(61,42,30,0.5); }
+  .b-block3 .block-icon   { background: rgba(251,191,36,0.15); }
+  .b-block3               { border-color: rgba(251,191,36,0.18); }
+
+  .b-block4 .block-header { background: rgba(45,30,61,0.5); }
+  .b-block4 .block-icon   { background: rgba(167,139,250,0.15); }
+  .b-block4               { border-color: rgba(167,139,250,0.18); }
+
+  /* layer accent colors */
+  .l-conv { border-left-color: var(--accent); }
+  .l-bn   { border-left-color: var(--teal); }
+  .l-relu { border-left-color: var(--coral); }
+  .l-pool { border-left-color: var(--amber); }
+  .l-add  { border-left-color: var(--green); }
+  .l-dn   { border-left-color: var(--accent2); }
+
+  /* ── Tooltip ── */
+  .tip {
+    display: inline-block;
+    width: 14px; height: 14px;
+    background: rgba(255,255,255,0.08);
+    border-radius: 50%;
+    text-align: center;
+    line-height: 14px;
+    font-size: 9px;
+    color: var(--muted);
+    cursor: help;
+    margin-left: 6px;
+    vertical-align: middle;
+    position: relative;
+  }
+  .tip:hover::after {
+    content: attr(data-tip);
+    position: absolute;
+    left: 20px; top: -4px;
+    background: #1e2230;
+    border: 1px solid var(--border-hi);
+    border-radius: 7px;
+    padding: 6px 10px;
+    font-size: 11px;
+    color: var(--text);
+    white-space: nowrap;
+    z-index: 10;
+    pointer-events: none;
+    font-style: normal;
+    font-family: 'Inter', sans-serif;
+  }
+
+  /* ── "Click to expand" hint ── */
+  .expand-hint {
+    font-size: 10px;
+    color: var(--muted);
+    text-align: right;
+    padding: 8px 18px 10px;
+    opacity: 0.7;
+  }
+  .expand-hint.hidden { display: none; }
+
+  /* ── Row with side skip viz ── */
+  .main-flow {
+    padding: 0 48px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .block-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .block-row .connector {
+    width: 2px;
+    height: 24px;
+    background: linear-gradient(to bottom, var(--accent), var(--accent2));
+    opacity: 0.3;
+    flex-shrink: 0;
+    margin: 0 auto;
+  }
+
+  .arr-down {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 4px 0;
+    width: 100%;
+  }
+  .arr-down .line {
+    width: 2px; height: 20px;
+    background: linear-gradient(to bottom, var(--accent), var(--accent2));
+    opacity: 0.3;
+  }
+  .arr-down .head {
+    width: 0; height: 0;
+    border-left: 5px solid transparent;
+    border-right: 5px solid transparent;
+    border-top: 8px solid rgba(167,139,250,0.4);
+  }
+
+  /* ── Input/Output label strip ── */
+  .io-strip {
+    padding: 10px 48px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 11px;
+    color: var(--muted);
+  }
+  .io-tag {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    padding: 3px 10px;
+    border-radius: 20px;
+  }
+  .io-in { background: rgba(79,142,247,0.12); color: var(--accent); border: 1px solid rgba(79,142,247,0.2); }
+  .io-out { background: rgba(244,114,182,0.12); color: var(--pink); border: 1px solid rgba(244,114,182,0.2); }
+
+  footer {
+    border-top: 1px solid var(--border);
+    padding: 20px 48px;
+    font-size: 11px;
+    color: var(--muted);
+    display: flex;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+</style>
+</head>
+<body>
+
+<!-- ── Header ── -->
+<header>
+  <div class="header-title">
+    <h1>LDC — Lightweight Dense CNN for Edge Detection</h1>
+    <p>Interactive architecture explorer · Click any block to expand layers and tensor shapes</p>
+  </div>
+  <div class="header-stats">
+    <div class="stat"><div class="val">&lt;1M</div><div class="lbl">Parameters</div></div>
+    <div class="stat"><div class="val">352×352</div><div class="lbl">Input size</div></div>
+    <div class="stat"><div class="val">4+1</div><div class="lbl">Output maps</div></div>
+    <div class="stat"><div class="val">4</div><div class="lbl">Dense blocks</div></div>
+    <div class="stat"><div class="val">B×1×H×W</div><div class="lbl">Final output</div></div>
+  </div>
+</header>
+
+<!-- ── Legend ── -->
+<div class="legend">
+  <div class="leg-item"><div class="leg-dot" style="background:var(--accent)"></div>Conv2d</div>
+  <div class="leg-item"><div class="leg-dot" style="background:var(--teal)"></div>BatchNorm</div>
+  <div class="leg-item"><div class="leg-dot" style="background:var(--coral)"></div>ReLU</div>
+  <div class="leg-item"><div class="leg-dot" style="background:var(--amber)"></div>MaxPool / skip</div>
+  <div class="leg-item"><div class="leg-dot" style="background:var(--green)"></div>Element-wise Add</div>
+  <div class="leg-item"><div class="leg-dot" style="background:var(--accent2)"></div>DenseLayer</div>
+  <div class="leg-item"><div class="leg-dot" style="background:var(--pink)"></div>CoFusion</div>
+  <div class="leg-item"><div class="leg-dot" style="background:rgba(52,211,153,0.6)"></div>UpConvBlock</div>
+</div>
+
+<!-- ── Input ── -->
+<div class="io-strip">
+  <span class="io-tag io-in">INPUT</span>
+  <span>RGB image tensor · batch_size × 3 × 352 × 352</span>
+</div>
+
+<div class="sec-label">Encoder backbone</div>
+
+<!-- ── Main blocks ── -->
+<div class="main-flow">
+
+  <!-- Block 1 -->
+  <div class="block b-block1" id="blk1" onclick="toggle('blk1')">
+    <div class="block-header">
+      <div class="block-icon">🟦</div>
+      <div>
+        <div class="block-title">Block 1 — DoubleConvBlock <span class="tip" data-tip="Stride=2 halves spatial dims from 352→176">?</span></div>
+        <div class="block-sub">Initial feature extraction with downsampling</div>
+      </div>
+      <div class="block-badge">3 → 16 ch</div>
+    </div>
+    <div class="expand-hint" id="hint-blk1">▼ click to expand</div>
+    <div class="block-body">
+      <p>First stage of the encoder. Takes raw RGB input (3 channels) and extracts 16 low-level feature maps. Stride=2 immediately halves spatial resolution from 352×352 to 176×176, making the network efficient. Xavier weight initialisation is applied.</p>
+      <div class="layers">
+        <div class="layer l-conv"><span class="lname">Conv2d</span> 3→16, kernel 3×3, pad 1, stride 2 <span class="ldetail">bias=True</span></div>
+        <div class="layer l-bn"><span class="lname">BatchNorm2d</span> 16 channels <span class="ldetail">normalize</span></div>
+        <div class="layer l-relu"><span class="lname">ReLU</span> inplace <span class="ldetail">activation</span></div>
+        <div class="layer l-conv"><span class="lname">Conv2d</span> 16→16, kernel 3×3, pad 1, stride 1 <span class="ldetail">bias=True</span></div>
+        <div class="layer l-bn"><span class="lname">BatchNorm2d</span> 16 channels <span class="ldetail">normalize</span></div>
+        <div class="layer" style="border-left-color:var(--muted)"><span class="lname" style="color:var(--muted)">No final ReLU</span> use_act=True default applies <span class="ldetail">passes to B2</span></div>
+      </div>
+      <div class="shapes">
+        <span class="shape-label">in →</span>
+        <span class="shape-pill"><span>B×</span>3<span>×352×352</span></span>
+        <span class="shape-label">out →</span>
+        <span class="shape-pill"><span>B×</span>16<span>×176×176</span></span>
+      </div>
+      <div style="margin-top:10px; padding:10px 12px; background:rgba(251,191,36,0.06); border-radius:8px; border-left:2px solid var(--amber); font-size:11px; color:var(--muted);">
+        <strong style="color:var(--amber)">Skip connection spawned:</strong> block_1 → side_1 (SingleConvBlock, stride=2) → <code style="color:var(--text)">block_1_side [B×32×88×88]</code> used in Block 2 addition.
+      </div>
+    </div>
+  </div>
+
+  <div class="arr-down"><div class="line"></div><div class="head"></div></div>
+
+  <!-- Block 2 -->
+  <div class="block b-block2" id="blk2" onclick="toggle('blk2')">
+    <div class="block-header">
+      <div class="block-icon">🟩</div>
+      <div>
+        <div class="block-title">Block 2 — DoubleConvBlock <span class="tip" data-tip="No stride here — MaxPool used separately for downsampling">?</span></div>
+        <div class="block-sub">Feature deepening + skip connection merge</div>
+      </div>
+      <div class="block-badge">16 → 32 ch</div>
+    </div>
+    <div class="expand-hint" id="hint-blk2">▼ click to expand</div>
+    <div class="block-body">
+      <p>Doubles channel depth from 16→32 without strided convolution. A separate MaxPool(3×3, stride=2) then downsamples the output. The downsampled result is added element-wise with <code>block_1_side</code> (the left skip), fusing early and mid-level features before feeding Block 3.</p>
+      <div class="layers">
+        <div class="layer l-conv"><span class="lname">Conv2d</span> 16→32, kernel 3×3, pad 1, stride 1 <span class="ldetail">bias=True</span></div>
+        <div class="layer l-bn"><span class="lname">BatchNorm2d</span> 32 channels</div>
+        <div class="layer l-relu"><span class="lname">ReLU</span> inplace</div>
+        <div class="layer l-conv"><span class="lname">Conv2d</span> 32→32, kernel 3×3, pad 1 <span class="ldetail">use_act=False</span></div>
+        <div class="layer l-bn"><span class="lname">BatchNorm2d</span> 32 channels <span class="ldetail">no relu after</span></div>
+        <div class="layer l-pool"><span class="lname">MaxPool2d</span> kernel 3×3, stride 2, pad 1 <span class="ldetail">downsample</span></div>
+        <div class="layer l-add"><span class="lname">Element Add</span> block_2_down + block_1_side <span class="ldetail">skip merge</span></div>
+      </div>
+      <div class="shapes">
+        <span class="shape-label">in →</span>
+        <span class="shape-pill"><span>B×</span>16<span>×176×176</span></span>
+        <span class="shape-label">conv out →</span>
+        <span class="shape-pill"><span>B×</span>32<span>×176×176</span></span>
+        <span class="shape-label">after pool+add →</span>
+        <span class="shape-pill"><span>B×</span>32<span>×88×88</span></span>
+      </div>
+      <div style="margin-top:10px; padding:10px 12px; background:rgba(251,191,36,0.06); border-radius:8px; border-left:2px solid var(--amber); font-size:11px; color:var(--muted);">
+        <strong style="color:var(--amber)">Skip connection spawned:</strong> block_2_add → side_2 (SingleConvBlock, stride=2) → <code style="color:var(--text)">block_2_side [B×64×44×44]</code> used in Block 3 addition.
+      </div>
+    </div>
+  </div>
+
+  <div class="arr-down"><div class="line"></div><div class="head"></div></div>
+
+  <!-- Block 3 -->
+  <div class="block b-block3" id="blk3" onclick="toggle('blk3')">
+    <div class="block-header">
+      <div class="block-icon">🟧</div>
+      <div>
+        <div class="block-title">Block 3 — _DenseBlock(2 layers) <span class="tip" data-tip="2 DenseLayers, each does: Conv→BN→ReLU→Conv→BN with 0.5× residual merge">?</span></div>
+        <div class="block-sub">Dense feature reuse with dual skip inputs</div>
+      </div>
+      <div class="block-badge">32 → 64 ch</div>
+    </div>
+    <div class="expand-hint" id="hint-blk3">▼ click to expand</div>
+    <div class="block-body">
+      <p>First dense block. Takes two inputs: <code>block_2_add</code> (left path) and <code>pre_dense_3</code> (right path, a projected 64-ch tensor). Each DenseLayer fuses these as <code>0.5×(new_features + x2)</code> — a soft residual. This lets the network blend newly learned features with the projected right-path features, giving rich gradient flow for training.</p>
+      <div class="layers">
+        <div class="layer l-dn"><span class="lname">pre_dense_3</span> SingleConvBlock(32→64, stride=1) <span class="ldetail">right input prep</span></div>
+        <div class="layer l-dn"><span class="lname">DenseLayer ×2</span> each: Conv(k=3,p=2)→BN→ReLU→Conv(k=3)→BN <span class="ldetail">32→64 ch</span></div>
+        <div class="layer l-add"><span class="lname">Soft residual</span> 0.5 × (new_features + x2) <span class="ldetail">per layer</span></div>
+        <div class="layer l-pool"><span class="lname">MaxPool2d</span> 3×3, stride 2, pad 1 <span class="ldetail">88→44 spatial</span></div>
+        <div class="layer l-add"><span class="lname">Element Add</span> block_3_down + block_2_side <span class="ldetail">skip merge</span></div>
+      </div>
+      <div class="shapes">
+        <span class="shape-label">in →</span>
+        <span class="shape-pill"><span>B×</span>32<span>×88×88</span></span>
+        <span class="shape-label">dense out →</span>
+        <span class="shape-pill"><span>B×</span>64<span>×88×88</span></span>
+        <span class="shape-label">after pool+add →</span>
+        <span class="shape-pill"><span>B×</span>64<span>×44×44</span></span>
+      </div>
+    </div>
+  </div>
+
+  <div class="arr-down"><div class="line"></div><div class="head"></div></div>
+
+  <!-- Block 4 -->
+  <div class="block b-block4" id="blk4" onclick="toggle('blk4')">
+    <div class="block-header">
+      <div class="block-icon">🟪</div>
+      <div>
+        <div class="block-title">Block 4 — _DenseBlock(3 layers) <span class="tip" data-tip="3 DenseLayers with the deepest 96-ch feature maps. Both Block 2 and Block 3 outputs feed in via pre_dense_4">?</span></div>
+        <div class="block-sub">Deep semantic features with multi-source dense fusion</div>
+      </div>
+      <div class="block-badge">64 → 96 ch</div>
+    </div>
+    <div class="expand-hint" id="hint-blk4">▼ click to expand</div>
+    <div class="block-body">
+      <p>Deepest encoder block. Gets input from two sources: <code>block_3_add</code> (left) and <code>block_4_pre_dense</code> (right) — the right input is itself a merge of Block 2 and Block 3 downsampled outputs, giving this block access to features from three previous stages. 3 DenseLayers increase capacity with 96 channels — the richest semantic representation in the network.</p>
+      <div class="layers">
+        <div class="layer l-dn"><span class="lname">pre_dense_2</span> SingleConvBlock(32→64, stride=2) <span class="ldetail">B2 resize</span></div>
+        <div class="layer l-add"><span class="lname">Add</span> block_3_down + block_2_resize_half <span class="ldetail">multi-scale merge</span></div>
+        <div class="layer l-dn"><span class="lname">pre_dense_4</span> SingleConvBlock(64→96, stride=1) <span class="ldetail">right input prep</span></div>
+        <div class="layer l-dn"><span class="lname">DenseLayer ×3</span> Conv(k=3,p=2)→BN→ReLU→Conv(k=3)→BN <span class="ldetail">64→96 ch</span></div>
+        <div class="layer l-add"><span class="lname">Soft residual</span> 0.5 × (new_features + x2) <span class="ldetail">per layer</span></div>
+      </div>
+      <div class="shapes">
+        <span class="shape-label">in →</span>
+        <span class="shape-pill"><span>B×</span>64<span>×44×44</span></span>
+        <span class="shape-label">out →</span>
+        <span class="shape-pill"><span>B×</span>96<span>×44×44</span></span>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /main-flow -->
+
+<!-- ── Skip connections summary ── -->
+<div class="skip-section">
+  <div class="skip-title">Skip connections — dual-path feature reuse</div>
+  <div class="skip-grid">
+    <div class="skip-card">
+      <div class="sc-title">side_1 → block_1_side</div>
+      <p>SingleConvBlock(16→32, stride=2). Projects Block 1 output to 32 channels at 88×88. Added to block_2_down before entering Block 3. Carries fine low-level edge gradients across two stages.</p>
+    </div>
+    <div class="skip-card">
+      <div class="sc-title">side_2 → block_2_side</div>
+      <p>SingleConvBlock(32→64, stride=2). Projects merged B2 output to 64 channels at 44×44. Added to block_3_down before entering Block 4. Bridges mid-level texture features into deeper layers.</p>
+    </div>
+    <div class="skip-card">
+      <div class="sc-title">pre_dense_3 (right path B3)</div>
+      <p>SingleConvBlock(32→64, stride=1). Projects block_2_down to 64ch at 88×88. Serves as the stable "memory" input x2 in each DenseLayer of Block 3.</p>
+    </div>
+    <div class="skip-card">
+      <div class="sc-title">pre_dense_4 (right path B4)</div>
+      <p>Combines block_3_down + pre_dense_2 (B2 resized). Then SingleConvBlock(64→96). This gives Block 4 context from both Block 2 and Block 3 simultaneously.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ── Upsampling ── -->
+<div class="sec-label">Decoder — upsampling blocks (USNet)</div>
+<div style="padding: 0 48px; font-size:12px; color:var(--muted); margin-bottom:12px;">
+  Each block takes its encoder stage output and progressively upsamples back to 352×352 using transposed convolutions. Click each to see the deconv chain.
+</div>
+<div class="up-row">
+
+  <div class="up-card" id="up1" onclick="toggleUp('up1')">
+    <div class="up-header">
+      <div class="uh-title">UpBlock 1</div>
+      <div class="uh-scale">scale ×2</div>
+    </div>
+    <div style="padding:8px 14px; font-size:11px; color:var(--muted);">From Block 1 · 16ch · 176×176</div>
+    <div class="up-body">
+      <p>Input already at 176×176. Needs only ×2 upscale. Single deconv step brings it to 352×352 with 1 output channel — coarsest edge map, captures large structural boundaries.</p>
+      <div class="layers" style="gap:4px;">
+        <div class="layer l-conv"><span class="lname">Conv2d</span> 16→16, 1×1</div>
+        <div class="layer l-relu"><span class="lname">ReLU</span></div>
+        <div class="layer" style="border-left-color:var(--green)"><span class="lname">ConvTranspose2d</span> 16→1, k=2, s=2 <span class="ldetail">→352×352</span></div>
+      </div>
+      <div class="shapes" style="margin-top:8px;">
+        <span class="shape-pill"><span>B×</span>1<span>×352×352</span></span>
+      </div>
+    </div>
+  </div>
+
+  <div class="up-card" id="up2" onclick="toggleUp('up2')">
+    <div class="up-header">
+      <div class="uh-title">UpBlock 2</div>
+      <div class="uh-scale">scale ×2</div>
+    </div>
+    <div style="padding:8px 14px; font-size:11px; color:var(--muted);">From Block 2 · 32ch · 176×176</div>
+    <div class="up-body">
+      <p>Block 2 output is at 176×176. Single ×2 deconv step reaches 352×352. Captures mid-frequency features — slightly finer than UpBlock 1, begins to resolve thinner edges.</p>
+      <div class="layers" style="gap:4px;">
+        <div class="layer l-conv"><span class="lname">Conv2d</span> 32→16, 1×1</div>
+        <div class="layer l-relu"><span class="lname">ReLU</span></div>
+        <div class="layer" style="border-left-color:var(--green)"><span class="lname">ConvTranspose2d</span> 16→1, k=2, s=2 <span class="ldetail">→352×352</span></div>
+      </div>
+      <div class="shapes" style="margin-top:8px;">
+        <span class="shape-pill"><span>B×</span>1<span>×352×352</span></span>
+      </div>
+    </div>
+  </div>
+
+  <div class="up-card" id="up3" onclick="toggleUp('up3')">
+    <div class="up-header">
+      <div class="uh-title">UpBlock 3</div>
+      <div class="uh-scale">scale ×4</div>
+    </div>
+    <div style="padding:8px 14px; font-size:11px; color:var(--muted);">From Block 3 · 64ch · 88×88</div>
+    <div class="up-body">
+      <p>Block 3 at 88×88 needs ×4 scale (2 deconv steps). First step: 64→16ch at intermediate size. Second step: 16→1ch at 352×352. Carries dense block features — richer semantic edge info.</p>
+      <div class="layers" style="gap:4px;">
+        <div class="layer l-conv"><span class="lname">Conv2d</span> 64→16, 1×1</div>
+        <div class="layer l-relu"><span class="lname">ReLU</span></div>
+        <div class="layer" style="border-left-color:var(--green)"><span class="lname">ConvTranspose2d</span> 16→16, k=4, s=2 <span class="ldetail">88→176</span></div>
+        <div class="layer l-conv"><span class="lname">Conv2d</span> 16→16, 1×1</div>
+        <div class="layer l-relu"><span class="lname">ReLU</span></div>
+        <div class="layer" style="border-left-color:var(--green)"><span class="lname">ConvTranspose2d</span> 16→1, k=4, s=2 <span class="ldetail">176→352</span></div>
+      </div>
+      <div class="shapes" style="margin-top:8px;">
+        <span class="shape-pill"><span>B×</span>1<span>×352×352</span></span>
+      </div>
+    </div>
+  </div>
+
+  <div class="up-card" id="up4" onclick="toggleUp('up4')">
+    <div class="up-header">
+      <div class="uh-title">UpBlock 4</div>
+      <div class="uh-scale">scale ×8</div>
+    </div>
+    <div style="padding:8px 14px; font-size:11px; color:var(--muted);">From Block 4 · 96ch · 44×44</div>
+    <div class="up-body">
+      <p>Deepest features at 44×44 need ×8 upscale (3 deconv steps). Progressive: 96→16→16→1 channels across three transposed conv operations. Contains the highest-level semantic edge predictions — precise object boundaries.</p>
+      <div class="layers" style="gap:4px;">
+        <div class="layer l-conv"><span class="lname">Conv2d</span> 96→16, 1×1</div>
+        <div class="layer l-relu"><span class="lname">ReLU</span></div>
+        <div class="layer" style="border-left-color:var(--green)"><span class="lname">ConvTranspose2d</span> 16→16, k=8, s=2 <span class="ldetail">44→88</span></div>
+        <div class="layer l-conv"><span class="lname">Conv2d</span> 16→16, 1×1</div>
+        <div class="layer l-relu"><span class="lname">ReLU</span></div>
+        <div class="layer" style="border-left-color:var(--green)"><span class="lname">ConvTranspose2d</span> 16→16, k=8, s=2 <span class="ldetail">88→176</span></div>
+        <div class="layer l-conv"><span class="lname">Conv2d</span> 16→16, 1×1</div>
+        <div class="layer l-relu"><span class="lname">ReLU</span></div>
+        <div class="layer" style="border-left-color:var(--green)"><span class="lname">ConvTranspose2d</span> 16→1, k=8, s=2 <span class="ldetail">176→352</span></div>
+      </div>
+      <div class="shapes" style="margin-top:8px;">
+        <span class="shape-pill"><span>B×</span>1<span>×352×352</span></span>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ── CoFusion ── -->
+<div class="sec-label">Attention-based fusion</div>
+<div class="cofusion-wrap">
+  <div class="cofusion-card" id="cofusion" onclick="toggleCF()">
+    <div class="cofusion-header">
+      <div class="cofusion-icon">🧠</div>
+      <div>
+        <div class="cofusion-title">CoFusion Block — Attention-weighted multi-scale fusion</div>
+        <div class="cofusion-sub">Dynamically decides which scale's edge map is most reliable per pixel · not a blind average</div>
+      </div>
+      <div class="block-badge" style="margin-left:auto;">4ch → 1ch</div>
+    </div>
+    <div class="cofusion-body">
+      <p style="font-size:12px; color:var(--muted); margin-bottom:14px;">
+        The four upsampled maps (out_1 to out_4) are concatenated into a B×4×352×352 tensor. CoFusion learns <strong style="color:var(--pink)">per-pixel attention weights</strong> using a Conv→GroupNorm→ReLU→Conv→Softmax pipeline. The Softmax ensures weights across the 4 scales sum to 1.0 at every pixel. The weighted sum collapses 4 channels to 1 — a single refined edge probability map.
+      </p>
+      <div class="cf-steps">
+        <div class="cf-step">
+          <div class="csn">Step 1 · Concat</div>
+          <p>torch.cat([out1,out2,out3,out4], dim=1) → B×4×352×352. All 4 scale predictions in one tensor.</p>
+        </div>
+        <div class="cf-step">
+          <div class="csn">Step 2 · Conv2d</div>
+          <p>4→32 channels, 3×3, pad=1. Learns cross-scale feature interactions.</p>
+        </div>
+        <div class="cf-step">
+          <div class="csn">Step 3 · GroupNorm + ReLU</div>
+          <p>GroupNorm(4 groups, 32ch) normalises. ReLU adds non-linearity. Stable across batch sizes.</p>
+        </div>
+        <div class="cf-step">
+          <div class="csn">Step 4 · Conv2d</div>
+          <p>32→4 channels, 3×3, pad=1. Projects back to 4 — one attention score per scale.</p>
+        </div>
+        <div class="cf-step">
+          <div class="csn">Step 5 · Softmax</div>
+          <p>dim=1 Softmax across 4 channels. At each pixel, weights sum to 1.0 — a proper probability distribution over scales.</p>
+        </div>
+        <div class="cf-step">
+          <div class="csn">Step 6 · Weighted sum</div>
+          <p>(x × attn).sum(1).unsqueeze(1) → B×1×352×352. Final fused edge map.</p>
+        </div>
+      </div>
+      <div class="shapes">
+        <span class="shape-label">in →</span>
+        <span class="shape-pill"><span>B×</span>4<span>×352×352</span></span>
+        <span class="shape-label">attn →</span>
+        <span class="shape-pill"><span>B×</span>4<span>×352×352</span></span>
+        <span class="shape-label">out →</span>
+        <span class="shape-pill" style="border-color:rgba(244,114,182,0.4); color:var(--pink)"><span>B×</span>1<span>×352×352</span></span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Outputs ── -->
+<div class="sec-label">Outputs</div>
+<div class="output-wrap">
+  <div style="font-size:12px; color:var(--muted); margin-bottom:4px;">
+    The model returns a list of 5 tensors — 4 intermediate scale maps + 1 fused. All are B×1×352×352. During inference the fused map is used; during training all 5 contribute to the loss (deep supervision).
+  </div>
+  <div class="output-row">
+    <div class="out-card">
+      <div class="oc-icon">🔵</div>
+      <div class="oc-title">out_1</div>
+      <div class="oc-shape">B×1×352×352</div>
+      <div class="oc-desc">From Block 1 via UpBlock 1. Coarse structural boundaries. Low-frequency edge signal.</div>
+    </div>
+    <div class="out-card">
+      <div class="oc-icon">🟢</div>
+      <div class="oc-title">out_2</div>
+      <div class="oc-shape">B×1×352×352</div>
+      <div class="oc-desc">From Block 2 via UpBlock 2. Mid-level features. Slightly finer edges.</div>
+    </div>
+    <div class="out-card">
+      <div class="oc-icon">🟠</div>
+      <div class="oc-title">out_3</div>
+      <div class="oc-shape">B×1×352×352</div>
+      <div class="oc-desc">From DenseBlock 3 via UpBlock 3 (×4). Richer texture-aware edge predictions.</div>
+    </div>
+    <div class="out-card">
+      <div class="oc-icon">🟣</div>
+      <div class="oc-title">out_4</div>
+      <div class="oc-shape">B×1×352×352</div>
+      <div class="oc-desc">From DenseBlock 4 via UpBlock 4 (×8). Deepest semantic edge map. High-level object contours.</div>
+    </div>
+    <div class="out-card fused">
+      <div class="oc-icon">✨</div>
+      <div class="oc-title">block_cat (fused)</div>
+      <div class="oc-shape">B×1×352×352</div>
+      <div class="oc-desc">CoFusion attention-weighted combination of all 4 scales. Final refined edge probability map. Best single output.</div>
+    </div>
+  </div>
+</div>
+
+<div class="io-strip" style="margin-top:0;">
+  <span class="io-tag io-out">OUTPUT</span>
+  <span>results = [out_1, out_2, out_3, out_4, block_cat] · all B×1×352×352 · raw edge probabilities (0–1)</span>
+</div>
+
+<footer>
+  <span>LDC — Lightweight Dense CNN · modelb4.py · &lt;1M parameters · 352×352 default input</span>
+  <span>Click any block above to expand its layer details and tensor shapes</span>
+</footer>
+
+<script>
+function toggle(id) {
+  const el = document.getElementById(id);
+  const hint = document.getElementById('hint-' + id);
+  const wasActive = el.classList.contains('active');
+  document.querySelectorAll('.block').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.expand-hint').forEach(h => h.classList.remove('hidden'));
+  if (!wasActive) {
+    el.classList.add('active');
+    if (hint) hint.classList.add('hidden');
+  }
+}
+function toggleUp(id) {
+  const el = document.getElementById(id);
+  const wasActive = el.classList.contains('active');
+  document.querySelectorAll('.up-card').forEach(b => b.classList.remove('active'));
+  if (!wasActive) el.classList.add('active');
+}
+function toggleCF() {
+  document.getElementById('cofusion').classList.toggle('active');
+}
+// auto-open block 1 on load for discoverability
+window.onload = () => {
+  setTimeout(() => toggle('blk1'), 300);
+};
+</script>
+</body>
+</html>

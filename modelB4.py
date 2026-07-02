@@ -23,7 +23,8 @@ def weight_init(m):
             torch.nn.init.zeros_(m.bias)
 
 class CoFusion(nn.Module):
-
+#Instead of blindly averaging them, this block computes Attention Weightsto dynamically
+# decide which block's prediction is the most accurate for each individual pixel coordinate.
     def __init__(self, in_ch, out_ch):
         super(CoFusion, self).__init__()
         self.conv1 = nn.Conv2d(in_ch, 32, kernel_size=3,
@@ -139,7 +140,7 @@ class DoubleConvBlock(nn.Module):
         if self.use_act:
             x = self.relu(x)
         return x
-
+########################################################################################################
 class LDC(nn.Module):
     """ Definition of the DXtrem network. """
 
@@ -206,7 +207,6 @@ class LDC(nn.Module):
         block_4_pre_dense = self.pre_dense_4(block_3_down+block_2_resize_half) # [8,96,44,44]
         block_4, _ = self.dblock_4([block_3_add, block_4_pre_dense]) # [8,96,44,44]
 
-
         # upsampling blocks
         out_1 = self.up_block_1(block_1)
         out_2 = self.up_block_2(block_2)
@@ -223,12 +223,10 @@ class LDC(nn.Module):
         results.append(block_cat)
         return results
 
-
 if __name__ == '__main__':
     batch_size = 8
     img_height = 352
     img_width = 352
-
     # device = "cuda" if torch.cuda.is_available() else "cpu"
     device = "cpu"
     input = torch.rand(batch_size, 3, img_height, img_width).to(device)
@@ -237,9 +235,28 @@ if __name__ == '__main__':
     model = LDC().to(device)
     output = model(input)
     print(f"output shapes: {[t.shape for t in output]}")
-
-    # for i in range(20000):
-    #     print(i)
-    #     output = model(input)
-    #     loss = nn.MSELoss()(output[-1], target)
-    #     loss.backward()
+'''
+[Original Color Image] ──► (3 color channels: R, G, B)
+         │
+         ▼
+[Preprocessing Block] ──► Subtracts 'mean_bgr' values & resizes to 512x512
+         │
+         ▼
+[Encoder Blocks (1-4)] ──► Sweeps 2D Convolution kernels to find spatial gradients
+         │                 (Generates 4 raw intermediate edge maps)
+         │
+         ▼
+[Transposed Convolutions] ─► Intelligently upsamples smaller, deep maps back to 512x512
+         │
+         ▼
+ [CoFusion Block] ───────► Calculates attention weights (Softmax) to blend maps
+         │
+         ▼
+   [Output Grayscale Map] ──► Saved in 'avg' and 'fused' folders as raw probabilities
+         │
+         ▼
+ [post_process.py] ──────► Appended Binary Thresholding (crushed gray to pure black/white)
+         │
+         ▼
+[Final Clean Edges]
+'''
