@@ -1,89 +1,34 @@
-[![PWC](https://img.shields.io/endpoint.svg?url=https://paperswithcode.com/badge/ldc-lightweight-dense-cnn-for-edge-detection/edge-detection-on-brind)](https://paperswithcode.com/sota/edge-detection-on-brind?p=ldc-lightweight-dense-cnn-for-edge-detection) 
-[![PWC](https://img.shields.io/endpoint.svg?url=https://paperswithcode.com/badge/ldc-lightweight-dense-cnn-for-edge-detection/edge-detection-on-biped-1)](https://paperswithcode.com/sota/edge-detection-on-biped-1?p=ldc-lightweight-dense-cnn-for-edge-detection)
-![Lines-of-Code](https://raw.githubusercontent.com/xavysp/LDC/gh-pages/loc-badge.svg)
-[![Hits-of-Code](https://hitsofcode.com/github/xavysp/LDC)](https://hitsofcode.com/view/github/xavysp/LDC)
+# Hardware Acceleration of Lightweight Dense CNN (LDC) for Edge Detection
 
-# LDC: Lightweight Dense CNN for Edge Detection (In construction)
-With the same purpose and features as [DexiNed](https://github.com/xavysp/DexiNed), LDC is a straightforward CNN based model
-for edge detection. LDC has just ~0.7M parameters, it can reduce your time of training and testing. This model is trained
-only on datasets prepared for edge detection [BIPED](https://www.kaggle.com/datasets/xavysp/biped), 
-[MDBD](https://paperswithcode.com/sota/edge-detection-on-mdbd), and 
-[RINDNet](https://github.com/MengyangPu/RINDNet)---we have prepared this dataset here
-[BRIND](https://github.com/xavysp/BRIND).
-Before using this repo, we highly recommend read our paper in 
-[LDC: Lightweight Dense CNN for Edge Detection](https://ieeexplore.ieee.org/document/9807316).
-Check the results below.
+This repository contains the synthesizable, high-throughput structural Verilog RTL design and hardware acceleration architecture for the **Lightweight Dense CNN (LDC)** edge detection network, optimized for edge-computing FPGA fabrics.
 
-<div style="text-align:center"><img src='imgs/banner.png' width=800>
-</div>
+---
 
-Check the banner in [HR](https://docs.google.com/drawings/d/1xyBniUToGqtgXrrgE7qckrkARkmgHuw945NfgsGjS9s/edit?usp=sharing)
+## 📊 Algorithmic Comparison & Design Motivation
 
-## Requirements
+Before designing the custom RTL accelerator fabric, a comprehensive structural and mathematical evaluation was conducted comparing traditional spatial filters with deep learning-based edge detection.
 
-* [Python >= 3.7](https://www.python.org/downloads/release/python-370/g)
-* [Pytorch >=1.6](https://pytorch.org/)
-* [OpenCV](https://pypi.org/project/opencv-python/)
-* [Kornia](https://kornia.github.io/)
-* Other package like Numpy, h5py, PIL, json. 
+| Criteria | Sobel Filter | Canny Edge Detector | LDC (Lightweight Dense CNN) |
+| :--- | :--- | :--- | :--- |
+| **Mathematical Base** | First-order derivative (gradient intensity vectors). | Multi-stage algorithm (Gaussian blur, Non-max suppression, Hysteresis). | Parameter-efficient Dense Deep Learning Layer blocks. |
+| **Hardware Mapping** | Simple $3\times3$ spatial convolution matrix (no multipliers needed, shift-add operation). | Complex due to non-maximum suppression conditional checks and dynamic buffering. | High MAC intensive, parallel spatial computation blocks. |
+| **Edge Semantics** | Captures high-frequency noise; misses deep contextual boundary definitions. | Sharp thin edges but sensitive to lighting variations and manual thresholds. | Robust **Context-aware semantic edges** across complex real-world illumination. |
+| **Hardware Footprint** | Low hardware footprint (few LUTs, no BRAM required). | Moderate; requires local register arrays for structural pipeline checks. | **Ultra-optimized:** Shrinks parameter footprint to just **1.9% of DexiNed** while staying within 0.6% of SOTA ODS accuracy. |
 
-## Install in your local PC
+---
 
-Once the packages are installed,  clone this repo as follow: 
+## 🛠 Hardware Architecture Contributions
 
-    git clone https://github.com/xavysp/LDC.git
-    cd LDC
-## Project Architecture
+- **Signed Q8.8 Fixed-Point Math Core:** Translated standard floating-point PyTorch weights/gradients into silicon-optimized 16-bit Signed Q8.8 arithmetic to optimize physical DSP block constraints.
+- **2D Convolution Line Buffers:** Configured multi-row streaming line structures to enable sequential pixel-stream feeding without stalling the FPGA pipeline matrix.
+- **Combinational Tapping Pipeline:** Integrated combinational tapping logic (`assign` interfaces) across multi-channel MAC (Multiply-Accumulate) structural processing nodes to wipe out multi-cycle loop latencies.
+- **Differential Verification:** Built a custom Python golden reference pipeline simulation testbench architecture verifying cycle-accurate bit-level compatibility between RTL logic states and model weight tensors.
 
-```
-├── data                        # Sample images for testing (paste your image here)
-|   ├── (Some images)           # Images to test LDC
-├── img                         # Images used in README.md
-|   └── banner.png              # LDC banner
-├── utls                        # A series of tools used in this repo
-|   └── img_processing.py       # Miscellaneous tool functions
-├── datasets.py                 # Tools for dataset managing 
-├── losses2.py                  # Loss function used to train DexiNed (BDCNloss2)
-├── main.py                     # The main python file with main functions and parameter settings
-                                # here you can test and train
-├── modelB4.py                  # LDC (4 blocks) class in pythorch
-└── modelB5.py                  # LDC (5 blocks) class in pythorch
-```
+---
 
-## Test
+## 📂 Repository Structure
 
-In dataset.py you will find most of the dataset used in edge, contour, and boundary detection.
-If you have your own dataset copy and paste in data folder and run the code bellow
-    
-    python main.py --choose_test_data=-1
-
-## Train
-
-Check the dateset you have for training, set them in dataset.py and main.py---line 216-350. Then
-run the following code:
-
-    python main.py
-
-## Acknowledgement
-
-* We like to thanks to the previous repo: [DexiNed](https://GitHub.com/xavysp/LDC) and [CATS](https://github.com/WHUHLX/CATS)
-
-
-# Citation
-
-If you like LDC, why not starring the project on GitHub!
-
-[![GitHub stars](https://img.shields.io/github/stars/xavysp/LDC.svg?style=social&label=Star&maxAge=3600)](https://GitHub.com/xavysp/LDC/stargazers/)
-
-Please cite our paper if you find helpful in your academic/scientific publication,
-```
-@ARTICLE{xsoria2022ldc,
-  author={Soria, Xavier and Pomboza-Junez, Gonzalo and Sappa, Angel Domingo},
-  journal={IEEE Access}, 
-  title={LDC: Lightweight Dense CNN for Edge Detection}, 
-  year={2022},
-  volume={10},
-  number={},
-  pages={68281-68290},
-  doi={10.1109/ACCESS.2022.3186344}}
-```
+- `/rtl` - Synthesizable structural Verilog source files (MAC, line buffers, processing blocks).
+- `/tb` - Self-checking testbenches and automated test vectors.
+- `/utils` - PyTorch models, evaluation baselines, and Golden Reference verification scripts.
+- `/docs` - Complete detailed technical PDF manual, LaTeX scripts, and theoretical background breakdown.
